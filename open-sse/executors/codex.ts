@@ -154,6 +154,50 @@ export class CodexExecutor extends BaseExecutor {
       body.service_tier = CODEX_FAST_WIRE_VALUE;
     }
 
+    // Extract developer/system role messages from input array as instructions
+    // Handles both:
+    // - OpenCode format: {role: "developer", content: "..."} or {role: "developer", content: [{type: "input_text", text: "..."}]}
+    // - Codex format: {type: "message", role: "developer", content: [{type: "input_text", text: "..."}]}
+    if (body.input && Array.isArray(body.input)) {
+      const developerMessages = body.input.filter(
+        (item) => item.role === "developer" || item.role === "system"
+      );
+      if (developerMessages.length > 0 && !body.instructions) {
+        // Concatenate all developer message content as instructions
+        body.instructions = developerMessages
+          .map((item) => {
+            // Handle content as string
+            if (typeof item.content === "string") {
+              return item.content;
+            }
+            // Handle content as array (Codex/OpenCode format)
+            if (Array.isArray(item.content)) {
+              return item.content
+                .map((c) => {
+                  // Codex format: {type: "input_text", text: "..."}
+                  if (c.type === "input_text" && c.text) return c.text;
+                  // OpenAI format: {type: "text", text: "..."}
+                  if (c.type === "text" && c.text) return c.text;
+                  return "";
+                })
+                .filter((t) => t !== "")
+                .join("");
+            }
+            return "";
+          })
+          .filter((c) => c.trim() !== "")
+          .join("\n\n");
+        // Remove developer messages from input array
+        body.input = body.input.filter(
+          (item) => item.role !== "developer" && item.role !== "system"
+        );
+      }
+    }
+
+    // Remove unsupported parameters that Codex API doesn't accept
+    delete body.max_output_tokens; // OpenCode sends this but Codex doesn't support it
+    delete body.max_tokens; // Some clients send this but Codex doesn't support it
+
     if (nativeCodexPassthrough) {
       return body;
     }
@@ -203,7 +247,6 @@ export class CodexExecutor extends BaseExecutor {
     delete body.top_logprobs;
     delete body.n;
     delete body.seed;
-    delete body.max_tokens;
     delete body.user; // Cursor sends this but Codex doesn't support it
     delete body.prompt_cache_retention; // Cursor sends this but Codex doesn't support it
     delete body.metadata; // Cursor sends this but Codex doesn't support it

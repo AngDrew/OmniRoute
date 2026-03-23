@@ -388,7 +388,10 @@ export function openaiToOpenAIResponsesRequest(
 
   // If no system message, keep empty instructions
   if (!hasSystemMessage) {
-    result.instructions = "";
+    const creds = toRecord(credentials);
+    const providerSpecificData = toRecord(creds.providerSpecificData);
+    const isResponsesCompatibleNode = providerSpecificData.apiType === "responses";
+    result.instructions = isResponsesCompatibleNode ? "You are a helpful assistant." : "";
   }
 
   // Convert tools format

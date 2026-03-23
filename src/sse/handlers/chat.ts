@@ -490,6 +490,20 @@ async function resolveModelOrError(modelStr: string, body: any) {
     log.info("ROUTING", `Custom model apiFormat=responses → targetFormat=openai-responses`);
   }
 
+  // For OpenAI-compatible provider nodes configured as Responses,
+  // route /chat/completions-style requests through Responses format automatically.
+  // This enables reasoning-compatible upstream behavior without requiring client changes.
+  if (
+    (provider as string).startsWith("openai-compatible-") &&
+    (modelInfo as any).providerApiType === "responses"
+  ) {
+    targetFormat = "openai-responses";
+    log.info(
+      "ROUTING",
+      "OpenAI-compatible provider apiType=responses → targetFormat=openai-responses"
+    );
+  }
+
   const ctxTag = extendedContext && providerAlias === "claude" ? " [1m]" : "";
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}${ctxTag}`);

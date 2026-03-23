@@ -25,6 +25,20 @@ export function convertResponsesApiFormat(body) {
     const itemType = item.type || (item.role ? "message" : null);
 
     if (itemType === "message") {
+      // Handle developer role (OpenAI convention) as system instructions
+      if (item.role === "developer") {
+        const content =
+          typeof item.content === "string"
+            ? item.content
+            : Array.isArray(item.content)
+              ? item.content.map((c) => c.text || "").join("")
+              : "";
+        if (content) {
+          result.messages.push({ role: "system", content });
+        }
+        continue;
+      }
+
       // Flush each pending assistant message with tool calls
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);

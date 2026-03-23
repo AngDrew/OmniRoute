@@ -121,7 +121,8 @@ export class BaseExecutor {
       const rawPath = typeof psd?.chatPath === "string" && psd.chatPath ? psd.chatPath : null;
       const customPath = rawPath && sanitizePath(rawPath) ? rawPath : null;
       if (customPath) return `${normalized}${customPath}`;
-      const path = this.provider.includes("responses") ? "/responses" : "/chat/completions";
+      const apiType = psd?.apiType === "responses" ? "responses" : "chat";
+      const path = apiType === "responses" ? "/responses" : "/chat/completions";
       return `${normalized}${path}`;
     }
     const baseUrls = this.getBaseUrls();

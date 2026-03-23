@@ -14,7 +14,8 @@ export class DefaultExecutor extends BaseExecutor {
       const normalized = baseUrl.replace(/\/$/, "");
       const customPath = typeof psd?.chatPath === "string" && psd.chatPath ? psd.chatPath : null;
       if (customPath) return `${normalized}${customPath}`;
-      const path = this.provider.includes("responses") ? "/responses" : "/chat/completions";
+      const apiType = psd?.apiType === "responses" ? "responses" : "chat";
+      const path = apiType === "responses" ? "/responses" : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {

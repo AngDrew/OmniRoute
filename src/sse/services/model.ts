@@ -58,6 +58,7 @@ export async function getModelInfo(modelStr) {
         provider: matchedOpenAI.id,
         model: parsed.model,
         extendedContext,
+        providerApiType: matchedOpenAI.apiType,
         ...(apiFormat && { apiFormat }),
       };
     }

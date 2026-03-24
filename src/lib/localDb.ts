@@ -75,6 +75,23 @@ export {
 } from "./db/apiKeys";
 
 export {
+  // Budget Ledger
+  recordBudgetUsage,
+  getRequestCount,
+  getUsdCost,
+  getBudgetUsageSummary,
+  evaluateBudget,
+  checkBudgetAllowed,
+  cleanupOldLedgerEntries,
+} from "./db/apiKeyBudgetLedger";
+
+export type {
+  BudgetMetric,
+  BudgetUsageSummary,
+  BudgetEvaluationResult,
+} from "./db/apiKeyBudgetLedger";
+
+export {
   // Settings
   getSettings,
   updateSettings,

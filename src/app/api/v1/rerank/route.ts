@@ -13,6 +13,7 @@ import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { v1RerankSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { getProviderNodes } from "@/lib/localDb";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 
 /**
  * Handle CORS preflight
@@ -127,6 +128,21 @@ export async function POST(request) {
     });
     if (response?.ok) {
       await clearRecoveredProviderState(credentials);
+
+      // Record budget usage
+      if (policy.apiKeyInfo?.id) {
+        try {
+          recordBudgetUsage({
+            apiKeyId: policy.apiKeyInfo.id,
+            endpointType: "rerank",
+            provider,
+            success: true,
+            requestCount: 1,
+            costUsd: null,
+            costSource: "unknown",
+          });
+        } catch {}
+      }
     }
     return response;
   }

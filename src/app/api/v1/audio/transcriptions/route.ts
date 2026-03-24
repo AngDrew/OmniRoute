@@ -16,6 +16,7 @@ import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { getProviderNodes } from "@/lib/localDb";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 
 /**
  * Handle CORS preflight
@@ -115,6 +116,22 @@ export async function POST(request) {
   });
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);
+
+    // Record budget usage
+    if (policy.apiKeyInfo?.id) {
+      try {
+        recordBudgetUsage({
+          apiKeyId: policy.apiKeyInfo.id,
+          endpointType: "audio_transcriptions",
+          provider,
+          model: resolvedModel,
+          success: true,
+          requestCount: 1,
+          costUsd: null,
+          costSource: "unknown",
+        });
+      } catch {}
+    }
   }
   return response;
 }

@@ -20,6 +20,7 @@ import { v1ImageGenerationSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 import { getAllCustomModels } from "@/lib/localDb";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 
 /**
  * Handle CORS preflight
@@ -176,6 +177,24 @@ export async function POST(request) {
 
   if (result.success) {
     await clearRecoveredProviderState(credentials);
+
+    // Record budget usage
+    if (policy.apiKeyInfo?.id) {
+      try {
+        recordBudgetUsage({
+          apiKeyId: policy.apiKeyInfo.id,
+          endpointType: "images",
+          provider,
+          success: true,
+          requestCount: 1,
+          costUsd: null, // Image generation cost varies by provider
+          costSource: "unknown",
+        });
+      } catch (e) {
+        log.warn("IMAGE", `Budget recording failed: ${e}`);
+      }
+    }
+
     return new Response(JSON.stringify((result as any).data), {
       status: 200,
       headers: { "Content-Type": "application/json" },

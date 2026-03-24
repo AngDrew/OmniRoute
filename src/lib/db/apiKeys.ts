@@ -28,7 +28,7 @@ export interface AccessSchedule {
   tz: string;
 }
 
-interface ApiKeyMetadata {
+export interface ApiKeyMetadata {
   id: string;
   name: string;
   machineId: string | null;
@@ -40,6 +40,10 @@ interface ApiKeyMetadata {
   accessSchedule: AccessSchedule | null;
   maxRequestsPerDay: number | null;
   maxRequestsPerMinute: number | null;
+  budgetMetric: "usd" | "requests" | null;
+  budgetDailyLimit: number | null;
+  budgetWeeklyLimit: number | null;
+  budgetMonthlyLimit: number | null;
 }
 
 interface ApiKeyRow extends JsonRecord {
@@ -60,6 +64,14 @@ interface ApiKeyRow extends JsonRecord {
   isActive?: unknown;
   access_schedule?: unknown;
   accessSchedule?: unknown;
+  budget_metric?: unknown;
+  budgetMetric?: unknown;
+  budget_daily_limit?: unknown;
+  budgetDailyLimit?: unknown;
+  budget_weekly_limit?: unknown;
+  budgetWeeklyLimit?: unknown;
+  budget_monthly_limit?: unknown;
+  budgetMonthlyLimit?: unknown;
 }
 
 interface StatementLike<TRow = unknown> {
@@ -90,6 +102,10 @@ interface ApiKeyView extends JsonRecord {
   autoResolve: boolean;
   isActive: boolean;
   accessSchedule: AccessSchedule | null;
+  budgetMetric: "usd" | "requests" | null;
+  budgetDailyLimit: number | null;
+  budgetWeeklyLimit: number | null;
+  budgetMonthlyLimit: number | null;
 }
 
 // LRU cache for API key validation (valid keys only)
@@ -197,6 +213,22 @@ function ensureApiKeysColumns(db: ApiKeysDbLike) {
       db.exec("ALTER TABLE api_keys ADD COLUMN max_requests_per_minute INTEGER");
       console.log("[DB] Added api_keys.max_requests_per_minute column");
     }
+    if (!columnNames.has("budget_metric")) {
+      db.exec("ALTER TABLE api_keys ADD COLUMN budget_metric TEXT DEFAULT NULL");
+      console.log("[DB] Added api_keys.budget_metric column");
+    }
+    if (!columnNames.has("budget_daily_limit")) {
+      db.exec("ALTER TABLE api_keys ADD COLUMN budget_daily_limit REAL DEFAULT NULL");
+      console.log("[DB] Added api_keys.budget_daily_limit column");
+    }
+    if (!columnNames.has("budget_weekly_limit")) {
+      db.exec("ALTER TABLE api_keys ADD COLUMN budget_weekly_limit REAL DEFAULT NULL");
+      console.log("[DB] Added api_keys.budget_weekly_limit column");
+    }
+    if (!columnNames.has("budget_monthly_limit")) {
+      db.exec("ALTER TABLE api_keys ADD COLUMN budget_monthly_limit REAL DEFAULT NULL");
+      console.log("[DB] Added api_keys.budget_monthly_limit column");
+    }
     _schemaChecked = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -222,7 +254,7 @@ function getPreparedStatements(db: ApiKeysDbLike): ApiKeysStatements {
     _stmtGetKeyById = db.prepare<ApiKeyRow>("SELECT * FROM api_keys WHERE id = ?");
     _stmtValidateKey = db.prepare<JsonRecord>("SELECT 1 FROM api_keys WHERE key = ?");
     _stmtGetKeyMetadata = db.prepare<ApiKeyRow>(
-      "SELECT id, name, machine_id, allowed_models, allowed_connections, no_log, auto_resolve, is_active, access_schedule, max_requests_per_day, max_requests_per_minute FROM api_keys WHERE key = ?"
+      "SELECT id, name, machine_id, allowed_models, allowed_connections, no_log, auto_resolve, is_active, access_schedule, max_requests_per_day, max_requests_per_minute, budget_metric, budget_daily_limit, budget_weekly_limit, budget_monthly_limit FROM api_keys WHERE key = ?"
     );
     _stmtInsertKey = db.prepare(
       "INSERT INTO api_keys (id, name, key, machine_id, allowed_models, no_log, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -263,6 +295,10 @@ export async function getApiKeys() {
     camelRow.autoResolve = parseAutoResolve(camelRow.autoResolve);
     camelRow.isActive = parseIsActive(camelRow.isActive);
     camelRow.accessSchedule = parseAccessSchedule(camelRow.accessSchedule);
+    camelRow.budgetMetric = parseBudgetMetric(camelRow.budgetMetric);
+    camelRow.budgetDailyLimit = parseBudgetLimit(camelRow.budgetDailyLimit);
+    camelRow.budgetWeeklyLimit = parseBudgetLimit(camelRow.budgetWeeklyLimit);
+    camelRow.budgetMonthlyLimit = parseBudgetLimit(camelRow.budgetMonthlyLimit);
     if (typeof camelRow.id === "string" && camelRow.id.length > 0) {
       setNoLog(camelRow.id, camelRow.noLog === true);
     }
@@ -282,6 +318,10 @@ export async function getApiKeyById(id: string) {
   camelRow.autoResolve = parseAutoResolve(camelRow.autoResolve);
   camelRow.isActive = parseIsActive(camelRow.isActive);
   camelRow.accessSchedule = parseAccessSchedule(camelRow.accessSchedule);
+  camelRow.budgetMetric = parseBudgetMetric(camelRow.budgetMetric);
+  camelRow.budgetDailyLimit = parseBudgetLimit(camelRow.budgetDailyLimit);
+  camelRow.budgetWeeklyLimit = parseBudgetLimit(camelRow.budgetWeeklyLimit);
+  camelRow.budgetMonthlyLimit = parseBudgetLimit(camelRow.budgetMonthlyLimit);
   if (typeof camelRow.id === "string" && camelRow.id.length > 0) {
     setNoLog(camelRow.id, camelRow.noLog === true);
   }
@@ -347,6 +387,20 @@ function parseAccessSchedule(value: unknown): AccessSchedule | null {
   } catch {
     return null;
   }
+}
+
+function parseBudgetMetric(value: unknown): "usd" | "requests" | null {
+  if (value === "usd" || value === "requests") return value;
+  return null;
+}
+
+function parseBudgetLimit(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
 }
 
 /**
@@ -418,6 +472,10 @@ export async function updateApiKeyPermissions(
         accessSchedule?: AccessSchedule | null;
         maxRequestsPerDay?: number | null;
         maxRequestsPerMinute?: number | null;
+        budgetMetric?: "usd" | "requests" | null;
+        budgetDailyLimit?: number | null;
+        budgetWeeklyLimit?: number | null;
+        budgetMonthlyLimit?: number | null;
       }
 ) {
   const db = getDbInstance() as ApiKeysDbLike;
@@ -436,6 +494,10 @@ export async function updateApiKeyPermissions(
           accessSchedule: update.accessSchedule,
           maxRequestsPerDay: update.maxRequestsPerDay,
           maxRequestsPerMinute: update.maxRequestsPerMinute,
+          budgetMetric: update.budgetMetric,
+          budgetDailyLimit: update.budgetDailyLimit,
+          budgetWeeklyLimit: update.budgetWeeklyLimit,
+          budgetMonthlyLimit: update.budgetMonthlyLimit,
         };
 
   if (
@@ -447,7 +509,11 @@ export async function updateApiKeyPermissions(
     normalized.isActive === undefined &&
     normalized.accessSchedule === undefined &&
     normalized.maxRequestsPerDay === undefined &&
-    normalized.maxRequestsPerMinute === undefined
+    normalized.maxRequestsPerMinute === undefined &&
+    normalized.budgetMetric === undefined &&
+    normalized.budgetDailyLimit === undefined &&
+    normalized.budgetWeeklyLimit === undefined &&
+    normalized.budgetMonthlyLimit === undefined
   ) {
     return false;
   }
@@ -464,6 +530,10 @@ export async function updateApiKeyPermissions(
     accessSchedule?: string | null;
     maxRequestsPerDay?: number | null;
     maxRequestsPerMinute?: number | null;
+    budgetMetric?: string | null;
+    budgetDailyLimit?: number | null;
+    budgetWeeklyLimit?: number | null;
+    budgetMonthlyLimit?: number | null;
   } = { id };
 
   if (normalized.name !== undefined) {
@@ -472,13 +542,11 @@ export async function updateApiKeyPermissions(
   }
 
   if (normalized.allowedModels !== undefined) {
-    // Empty array means all models are allowed
     updates.push("allowed_models = @allowedModels");
     params.allowedModels = JSON.stringify(normalized.allowedModels || []);
   }
 
   if (normalized.allowedConnections !== undefined) {
-    // Empty array means all connections are allowed
     updates.push("allowed_connections = @allowedConnections");
     params.allowedConnections = JSON.stringify(normalized.allowedConnections || []);
   }
@@ -514,6 +582,26 @@ export async function updateApiKeyPermissions(
     params.maxRequestsPerMinute = normalized.maxRequestsPerMinute;
   }
 
+  if (normalized.budgetMetric !== undefined) {
+    updates.push("budget_metric = @budgetMetric");
+    params.budgetMetric = normalized.budgetMetric;
+  }
+
+  if (normalized.budgetDailyLimit !== undefined) {
+    updates.push("budget_daily_limit = @budgetDailyLimit");
+    params.budgetDailyLimit = normalized.budgetDailyLimit;
+  }
+
+  if (normalized.budgetWeeklyLimit !== undefined) {
+    updates.push("budget_weekly_limit = @budgetWeeklyLimit");
+    params.budgetWeeklyLimit = normalized.budgetWeeklyLimit;
+  }
+
+  if (normalized.budgetMonthlyLimit !== undefined) {
+    updates.push("budget_monthly_limit = @budgetMonthlyLimit");
+    params.budgetMonthlyLimit = normalized.budgetMonthlyLimit;
+  }
+
   const result = db.prepare(`UPDATE api_keys SET ${updates.join(", ")} WHERE id = @id`).run(params);
 
   if (result.changes === 0) return false;
@@ -522,9 +610,7 @@ export async function updateApiKeyPermissions(
     setNoLog(id, normalized.noLog);
   }
 
-  // Invalidate caches since permissions changed
   invalidateCaches();
-
   backupDbFile("pre-write");
   return true;
 }
@@ -605,6 +691,11 @@ export async function getApiKeyMetadata(
   const rawMaxRPD = record.max_requests_per_day ?? record.maxRequestsPerDay;
   const rawMaxRPM = record.max_requests_per_minute ?? record.maxRequestsPerMinute;
 
+  const rawBudgetMetric = record.budget_metric ?? record.budgetMetric;
+  const rawBudgetDaily = record.budget_daily_limit ?? record.budgetDailyLimit;
+  const rawBudgetWeekly = record.budget_weekly_limit ?? record.budgetWeeklyLimit;
+  const rawBudgetMonthly = record.budget_monthly_limit ?? record.budgetMonthlyLimit;
+
   const metadata: ApiKeyMetadata = {
     id: metadataId,
     name: metadataName,
@@ -619,6 +710,10 @@ export async function getApiKeyMetadata(
     accessSchedule: parseAccessSchedule(record.access_schedule ?? record.accessSchedule),
     maxRequestsPerDay: typeof rawMaxRPD === "number" && rawMaxRPD > 0 ? rawMaxRPD : null,
     maxRequestsPerMinute: typeof rawMaxRPM === "number" && rawMaxRPM > 0 ? rawMaxRPM : null,
+    budgetMetric: parseBudgetMetric(rawBudgetMetric),
+    budgetDailyLimit: parseBudgetLimit(rawBudgetDaily),
+    budgetWeeklyLimit: parseBudgetLimit(rawBudgetWeekly),
+    budgetMonthlyLimit: parseBudgetLimit(rawBudgetMonthly),
   };
 
   if (!metadata.id) {

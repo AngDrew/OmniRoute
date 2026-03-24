@@ -15,7 +15,7 @@ import { toJsonErrorPayload } from "@/shared/utils/upstreamError";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { v1SearchSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
-import { recordCost } from "@/domain/costRules";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 import {
   computeCacheKey,
   getOrCoalesce,
@@ -222,9 +222,17 @@ export async function POST(request: Request) {
     });
 
     // Record cost for budget tracking (skip cache hits — no provider cost)
-    if (!cached && policy.apiKeyInfo?.id && searchResult.usage?.search_cost_usd > 0) {
+    if (!cached && policy.apiKeyInfo?.id) {
       try {
-        recordCost(policy.apiKeyInfo.id, searchResult.usage.search_cost_usd);
+        recordBudgetUsage({
+          apiKeyId: policy.apiKeyInfo.id,
+          endpointType: "search",
+          provider: providerConfig.id,
+          success: true,
+          requestCount: 1,
+          costUsd: searchResult.usage?.search_cost_usd ?? null,
+          costSource: "provider",
+        });
       } catch (e: any) {
         log.warn("SEARCH", `Cost recording failed: ${e?.message}`);
       }

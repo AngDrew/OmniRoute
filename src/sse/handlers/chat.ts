@@ -376,7 +376,7 @@ async function handleSingleModelChat(
 
     if (result.success) {
       clearModelUnavailability(provider, model);
-      recordCostIfNeeded(apiKeyInfo, result);
+      recordBudgetUsageIfNeeded(apiKeyInfo, result, provider, model);
       if (telemetry) telemetry.startPhase("finalize");
       if (telemetry) telemetry.endPhase();
       return result.response;
@@ -622,15 +622,27 @@ async function executeChatWithBreaker({
   }
 }
 
+import { recordBudgetUsage } from "../../lib/db/apiKeyBudgetLedger";
+
 /**
- * Record cost if API key has budget tracking enabled.
+ * Record budget usage for API key after successful request.
  */
-function recordCostIfNeeded(apiKeyInfo: any, result: any) {
+function recordBudgetUsageIfNeeded(apiKeyInfo: any, result: any, provider: string, model: string) {
   if (!apiKeyInfo?.id) return;
   try {
     const usage = result.usage || {};
-    const estimatedCost = ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)) * 0.000001;
-    if (estimatedCost > 0) recordCost(apiKeyInfo.id, estimatedCost);
+    const costUsd = result.costUsd ?? null;
+
+    recordBudgetUsage({
+      apiKeyId: apiKeyInfo.id,
+      endpointType: "chat",
+      provider,
+      model,
+      success: result.success === true,
+      requestCount: 1,
+      costUsd,
+      costSource: costUsd ? "provider" : "unknown",
+    });
   } catch {}
 }
 

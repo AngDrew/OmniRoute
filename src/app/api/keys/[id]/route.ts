@@ -63,6 +63,10 @@ export async function PATCH(request, { params }) {
       autoResolve,
       isActive,
       accessSchedule,
+      budgetMetric,
+      budgetDailyLimit,
+      budgetWeeklyLimit,
+      budgetMonthlyLimit,
     } = validation.data;
 
     const payload: Parameters<typeof updateApiKeyPermissions>[1] = {};
@@ -73,6 +77,10 @@ export async function PATCH(request, { params }) {
     if (autoResolve !== undefined) payload.autoResolve = autoResolve;
     if (isActive !== undefined) payload.isActive = isActive;
     if (accessSchedule !== undefined) payload.accessSchedule = accessSchedule;
+    if (budgetMetric !== undefined) payload.budgetMetric = budgetMetric;
+    if (budgetDailyLimit !== undefined) payload.budgetDailyLimit = budgetDailyLimit;
+    if (budgetWeeklyLimit !== undefined) payload.budgetWeeklyLimit = budgetWeeklyLimit;
+    if (budgetMonthlyLimit !== undefined) payload.budgetMonthlyLimit = budgetMonthlyLimit;
 
     const updated = await updateApiKeyPermissions(id, payload);
     if (!updated) {
@@ -91,6 +99,10 @@ export async function PATCH(request, { params }) {
       ...(autoResolve !== undefined && { autoResolve }),
       ...(isActive !== undefined && { isActive }),
       ...(accessSchedule !== undefined && { accessSchedule }),
+      ...(budgetMetric !== undefined && { budgetMetric }),
+      ...(budgetDailyLimit !== undefined && { budgetDailyLimit }),
+      ...(budgetWeeklyLimit !== undefined && { budgetWeeklyLimit }),
+      ...(budgetMonthlyLimit !== undefined && { budgetMonthlyLimit }),
     });
   } catch (error) {
     console.log("Error updating key permissions:", error);

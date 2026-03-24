@@ -12,6 +12,7 @@ import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { v1ModerationSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 
 /**
  * Handle CORS preflight
@@ -72,6 +73,22 @@ export async function POST(request) {
   const response = await handleModeration({ body: { ...body, model }, credentials });
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);
+
+    // Record budget usage
+    if (policy.apiKeyInfo?.id) {
+      try {
+        recordBudgetUsage({
+          apiKeyId: policy.apiKeyInfo.id,
+          endpointType: "moderations",
+          provider: resolvedProvider,
+          model,
+          success: true,
+          requestCount: 1,
+          costUsd: null,
+          costSource: "unknown",
+        });
+      } catch {}
+    }
   }
   return response;
 }

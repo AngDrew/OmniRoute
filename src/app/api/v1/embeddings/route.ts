@@ -23,6 +23,7 @@ import { v1EmbeddingsSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 import { getAllCustomModels, getProviderNodes } from "@/lib/localDb";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 
 /**
  * Handle CORS preflight
@@ -221,6 +222,25 @@ export async function POST(request) {
 
   if (result.success) {
     if (credentials) await clearRecoveredProviderState(credentials);
+
+    // Record budget usage
+    if (policy.apiKeyInfo?.id) {
+      try {
+        recordBudgetUsage({
+          apiKeyId: policy.apiKeyInfo.id,
+          endpointType: "embeddings",
+          provider,
+          model: resolvedModel,
+          success: true,
+          requestCount: 1,
+          costUsd: null, // Embeddings cost calculation needs pricing data
+          costSource: "unknown",
+        });
+      } catch (e) {
+        log.warn("EMBED", `Budget recording failed: ${e}`);
+      }
+    }
+
     return new Response(JSON.stringify(result.data), {
       status: 200,
       headers: { "Content-Type": "application/json" },

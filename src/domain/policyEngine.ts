@@ -9,8 +9,9 @@
  */
 
 import { checkLockout } from "./lockoutPolicy";
-import { checkBudget } from "./costRules";
+import { evaluateBudget, checkBudgetAllowed } from "../lib/db/apiKeyBudgetLedger";
 import { resolveFallbackChain } from "./fallbackPolicy";
+import { getApiKeyMetadata } from "../lib/db/apiKeys";
 
 interface PolicyRequest {
   model: string;
@@ -44,7 +45,7 @@ interface Policy {
   };
 }
 
-export function evaluateRequest(request: PolicyRequest): PolicyVerdict {
+export async function evaluateRequest(request: PolicyRequest): Promise<PolicyVerdict> {
   const { model, apiKeyId, clientIp } = request;
 
   // ── 1. Lockout Policy ──────────────────────────────
@@ -62,14 +63,30 @@ export function evaluateRequest(request: PolicyRequest): PolicyVerdict {
 
   // ── 2. Budget Policy ───────────────────────────────
   if (apiKeyId) {
-    const budget = checkBudget(apiKeyId);
-    if (budget && !budget.allowed) {
-      return {
-        allowed: false,
-        reason: `Budget exceeded: ${budget.reason || "daily limit reached"}`,
-        adjustments: {},
-        policyPhase: "budget",
-      };
+    try {
+      const metadata = await getApiKeyMetadata(apiKeyId);
+      if (metadata?.budgetMetric) {
+        const allowed = checkBudgetAllowed(apiKeyId, metadata.budgetMetric, {
+          daily: metadata.budgetDailyLimit ?? null,
+          weekly: metadata.budgetWeeklyLimit ?? null,
+          monthly: metadata.budgetMonthlyLimit ?? null,
+        });
+        if (!allowed) {
+          const result = evaluateBudget(apiKeyId, metadata.budgetMetric, {
+            daily: metadata.budgetDailyLimit ?? null,
+            weekly: metadata.budgetWeeklyLimit ?? null,
+            monthly: metadata.budgetMonthlyLimit ?? null,
+          });
+          return {
+            allowed: false,
+            reason: result.reason || "Budget limit exceeded",
+            adjustments: {},
+            policyPhase: "budget",
+          };
+        }
+      }
+    } catch {
+      // Fail open if budget check fails
     }
   }
 
@@ -87,16 +104,19 @@ export function evaluateRequest(request: PolicyRequest): PolicyVerdict {
   };
 }
 
-export function evaluateFirstAllowed(models: string[], baseRequest: Omit<PolicyRequest, "model">) {
+export async function evaluateFirstAllowed(
+  models: string[],
+  baseRequest: Omit<PolicyRequest, "model">
+) {
   for (const model of models) {
-    const verdict = evaluateRequest({ ...baseRequest, model });
+    const verdict = await evaluateRequest({ ...baseRequest, model });
     if (verdict.allowed) {
       return { model, verdict };
     }
   }
 
   // All models denied — return last denial
-  const lastVerdict = evaluateRequest({ ...baseRequest, model: models[models.length - 1] });
+  const lastVerdict = await evaluateRequest({ ...baseRequest, model: models[models.length - 1] });
   return { model: null, verdict: lastVerdict };
 }
 

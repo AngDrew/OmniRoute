@@ -906,6 +906,10 @@ export const updateKeyPermissionsSchema = z
     autoResolve: z.boolean().optional(),
     isActive: z.boolean().optional(),
     accessSchedule: z.union([accessScheduleSchema, z.null()]).optional(),
+    budgetMetric: z.union([z.enum(["usd", "requests"]), z.null()]).optional(),
+    budgetDailyLimit: z.union([z.number().positive(), z.null()]).optional(),
+    budgetWeeklyLimit: z.union([z.number().positive(), z.null()]).optional(),
+    budgetMonthlyLimit: z.union([z.number().positive(), z.null()]).optional(),
   })
   .superRefine((value, ctx) => {
     if (
@@ -915,7 +919,11 @@ export const updateKeyPermissionsSchema = z
       value.noLog === undefined &&
       value.autoResolve === undefined &&
       value.isActive === undefined &&
-      value.accessSchedule === undefined
+      value.accessSchedule === undefined &&
+      value.budgetMetric === undefined &&
+      value.budgetDailyLimit === undefined &&
+      value.budgetWeeklyLimit === undefined &&
+      value.budgetMonthlyLimit === undefined
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

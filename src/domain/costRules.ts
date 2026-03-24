@@ -1,12 +1,22 @@
 /**
- * Cost Rules — Domain Layer (T-19)
+ * Cost Rules — Domain Layer (DEPRECATED)
  *
- * Business rules for cost management: budget thresholds,
- * quota checking, and cost summaries per API key.
+ * ⚠️ DEPRECATED: This module is being phased out in favor of the new
+ * API Key Budget system in src/lib/db/apiKeyBudgetLedger.ts
  *
- * State is persisted in SQLite via domainState.js.
+ * The new system provides:
+ * - Daily, weekly, and monthly budget limits
+ * - Support for USD and request-count metrics
+ * - Immutable ledger for usage tracking
+ * - Better enforcement and UI
+ *
+ * For new code, use:
+ * - recordBudgetUsage() from src/lib/db/apiKeyBudgetLedger.ts
+ * - evaluateBudget() from src/lib/db/apiKeyBudgetLedger.ts
+ * - Store limits in api_keys table (budget_metric, budget_daily_limit, etc.)
  *
  * @module domain/costRules
+ * @deprecated Use src/lib/db/apiKeyBudgetLedger.ts instead
  */
 
 import {

@@ -9,8 +9,7 @@
  */
 
 import { extractApiKey } from "@/sse/services/auth";
-import { getApiKeyMetadata, isModelAllowedForKey } from "@/lib/localDb";
-import { checkBudget } from "@/domain/costRules";
+import { getApiKeyMetadata, isModelAllowedForKey, evaluateBudget } from "@/lib/localDb";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import * as log from "@/sse/utils/logger";
@@ -31,8 +30,10 @@ export interface ApiKeyMetadata {
   allowedConnections?: string[];
   noLog?: boolean;
   autoResolve?: boolean;
-  budget?: number;
-  usedBudget?: number;
+  budgetMetric?: "usd" | "requests" | null;
+  budgetDailyLimit?: number | null;
+  budgetWeeklyLimit?: number | null;
+  budgetMonthlyLimit?: number | null;
   isActive?: boolean;
   accessSchedule?: AccessSchedule | null;
   maxRequestsPerDay?: number | null;
@@ -260,17 +261,26 @@ export async function enforceApiKeyPolicy(
     }
   }
 
-  // ── Check 4: Budget limit ──
-  if (apiKeyInfo.id) {
+  // ── Check 4: Budget limits (daily/weekly/monthly) ──
+  if (apiKeyInfo.id && apiKeyInfo.budgetMetric) {
     try {
-      const budgetOk = checkBudget(apiKeyInfo.id);
-      if (!budgetOk.allowed) {
+      const budgetResult = evaluateBudget(
+        apiKeyInfo.id,
+        apiKeyInfo.budgetMetric,
+        {
+          daily: apiKeyInfo.budgetDailyLimit ?? null,
+          weekly: apiKeyInfo.budgetWeeklyLimit ?? null,
+          monthly: apiKeyInfo.budgetMonthlyLimit ?? null,
+        },
+        1 // projected usage: 1 request
+      );
+      if (budgetResult.blocked) {
         return {
           apiKey,
           apiKeyInfo,
           rejection: errorResponse(
             HTTP_STATUS.RATE_LIMITED,
-            budgetOk.reason || "Budget limit exceeded"
+            budgetResult.reason || "Budget limit exceeded"
           ),
         };
       }

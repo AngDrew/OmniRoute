@@ -21,6 +21,7 @@ import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 import { getAllCustomModels } from "@/lib/localDb";
 import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
+import { recordUsageWithAnalytics } from "@/lib/budgetRecorder";
 
 /**
  * Handle CORS preflight
@@ -82,6 +83,8 @@ export async function GET() {
  * POST /v1/images/generations — generate images
  */
 export async function POST(request) {
+  const startTime = Date.now();
+
   let rawBody;
   try {
     rawBody = await request.json();
@@ -178,20 +181,29 @@ export async function POST(request) {
   if (result.success) {
     await clearRecoveredProviderState(credentials);
 
-    // Record budget usage
+    // Record budget usage AND analytics usage
     if (policy.apiKeyInfo?.id) {
+      const latencyMs = Date.now() - startTime;
+
       try {
-        recordBudgetUsage({
+        await recordUsageWithAnalytics({
           apiKeyId: policy.apiKeyInfo.id,
+          apiKeyName: policy.apiKeyInfo.name,
           endpointType: "images",
           provider,
           success: true,
           requestCount: 1,
-          costUsd: null, // Image generation cost varies by provider
+          latencyMs,
+          tokens: {
+            input: 0, // Image generation doesn't use tokens
+            output: 0,
+          },
+          status: "200",
+          costUsd: null,
           costSource: "unknown",
         });
       } catch (e) {
-        log.warn("IMAGE", `Budget recording failed: ${e}`);
+        log.warn("IMAGE", `Usage recording failed: ${e}`);
       }
     }
 

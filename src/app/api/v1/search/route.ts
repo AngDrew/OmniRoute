@@ -16,6 +16,7 @@ import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { v1SearchSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
+import { recordUsageWithAnalytics } from "@/lib/budgetRecorder";
 import {
   computeCacheKey,
   getOrCoalesce,
@@ -80,6 +81,8 @@ function buildDomainFilter(filters?: {
  * POST /v1/search — execute a web search
  */
 export async function POST(request: Request) {
+  const startTime = Date.now();
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -223,13 +226,22 @@ export async function POST(request: Request) {
 
     // Record cost for budget tracking (skip cache hits — no provider cost)
     if (!cached && policy.apiKeyInfo?.id) {
+      const latencyMs = Date.now() - startTime;
+
       try {
-        recordBudgetUsage({
+        await recordUsageWithAnalytics({
           apiKeyId: policy.apiKeyInfo.id,
+          apiKeyName: policy.apiKeyInfo.name,
           endpointType: "search",
           provider: providerConfig.id,
           success: true,
           requestCount: 1,
+          latencyMs,
+          tokens: {
+            input: 0, // Search doesn't use tokens
+            output: 0,
+          },
+          status: "200",
           costUsd: searchResult.usage?.search_cost_usd ?? null,
           costSource: "provider",
         });

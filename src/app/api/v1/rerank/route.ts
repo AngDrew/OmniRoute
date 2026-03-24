@@ -14,6 +14,7 @@ import { v1RerankSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { getProviderNodes } from "@/lib/localDb";
 import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
+import { recordUsageWithAnalytics } from "@/lib/budgetRecorder";
 
 /**
  * Handle CORS preflight
@@ -53,6 +54,8 @@ function buildDynamicRerankProvider(node: any) {
  * and local provider_nodes (oMLX, vLLM, etc.) via dynamic routing.
  */
 export async function POST(request) {
+  const startTime = Date.now();
+
   // Optional API key validation
   if (process.env.REQUIRE_API_KEY === "true") {
     const apiKey = extractApiKey(request);
@@ -129,15 +132,24 @@ export async function POST(request) {
     if (response?.ok) {
       await clearRecoveredProviderState(credentials);
 
-      // Record budget usage
+      // Record budget usage AND analytics usage
       if (policy.apiKeyInfo?.id) {
+        const latencyMs = Date.now() - startTime;
+
         try {
-          recordBudgetUsage({
+          await recordUsageWithAnalytics({
             apiKeyId: policy.apiKeyInfo.id,
+            apiKeyName: policy.apiKeyInfo.name,
             endpointType: "rerank",
             provider,
             success: true,
             requestCount: 1,
+            latencyMs,
+            tokens: {
+              input: 0, // Rerank doesn't use tokens
+              output: 0,
+            },
+            status: "200",
             costUsd: null,
             costSource: "unknown",
           });

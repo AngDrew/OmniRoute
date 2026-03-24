@@ -15,10 +15,11 @@ import {
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
-import { getProviderNodes } from "@/lib/localDb";
-import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
 import { v1AudioSpeechSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
+import { getProviderNodes } from "@/lib/localDb";
+import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
+import { recordUsageWithAnalytics } from "@/lib/budgetRecorder";
 
 /**
  * Handle CORS preflight
@@ -38,6 +39,8 @@ export async function OPTIONS() {
  * OpenAI TTS API compatible. Returns audio stream.
  */
 export async function POST(request) {
+  const startTime = Date.now();
+
   if (process.env.REQUIRE_API_KEY === "true") {
     const apiKey = extractApiKey(request);
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
@@ -65,7 +68,7 @@ export async function POST(request) {
   // Load local provider_nodes for audio routing (only localhost — prevents auth bypass/SSRF)
   let dynamicProviders: ReturnType<typeof buildDynamicAudioProvider>[] = [];
   try {
-    const nodes = await getProviderNodes();
+    const nodes = (await getProviderNodes()) as unknown as ProviderNodeRow[];
     dynamicProviders = (Array.isArray(nodes) ? nodes : [])
       .filter((n: ProviderNodeRow) => {
         if (n.apiType !== "chat" && n.apiType !== "responses") return false;
@@ -116,16 +119,25 @@ export async function POST(request) {
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);
 
-    // Record budget usage
+    // Record budget usage AND analytics usage
     if (policy.apiKeyInfo?.id) {
+      const latencyMs = Date.now() - startTime;
+
       try {
-        recordBudgetUsage({
+        await recordUsageWithAnalytics({
           apiKeyId: policy.apiKeyInfo.id,
+          apiKeyName: policy.apiKeyInfo.name,
           endpointType: "audio_speech",
           provider,
           model: resolvedModel,
           success: true,
           requestCount: 1,
+          latencyMs,
+          tokens: {
+            input: 0, // TTS doesn't use tokens
+            output: 0,
+          },
+          status: "200",
           costUsd: null,
           costSource: "unknown",
         });

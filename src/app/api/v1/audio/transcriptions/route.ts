@@ -17,6 +17,7 @@ import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { getProviderNodes } from "@/lib/localDb";
 import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
+import { recordUsageWithAnalytics } from "@/lib/budgetRecorder";
 
 /**
  * Handle CORS preflight
@@ -36,6 +37,8 @@ export async function OPTIONS() {
  * OpenAI Whisper API compatible (multipart/form-data)
  */
 export async function POST(request) {
+  const startTime = Date.now();
+
   // Optional API key validation
   if (process.env.REQUIRE_API_KEY === "true") {
     const apiKey = extractApiKey(request);
@@ -63,7 +66,7 @@ export async function POST(request) {
   // Load local provider_nodes for audio routing (only localhost — prevents auth bypass/SSRF)
   let dynamicProviders: ReturnType<typeof buildDynamicAudioProvider>[] = [];
   try {
-    const nodes = await getProviderNodes();
+    const nodes = (await getProviderNodes()) as unknown as ProviderNodeRow[];
     dynamicProviders = (Array.isArray(nodes) ? nodes : [])
       .filter((n: ProviderNodeRow) => {
         if (n.apiType !== "chat" && n.apiType !== "responses") return false;
@@ -117,16 +120,25 @@ export async function POST(request) {
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);
 
-    // Record budget usage
+    // Record budget usage AND analytics usage
     if (policy.apiKeyInfo?.id) {
+      const latencyMs = Date.now() - startTime;
+
       try {
-        recordBudgetUsage({
+        await recordUsageWithAnalytics({
           apiKeyId: policy.apiKeyInfo.id,
+          apiKeyName: policy.apiKeyInfo.name,
           endpointType: "audio_transcriptions",
           provider,
           model: resolvedModel,
           success: true,
           requestCount: 1,
+          latencyMs,
+          tokens: {
+            input: 0, // Transcription doesn't have traditional tokens
+            output: 0,
+          },
+          status: "200",
           costUsd: null,
           costSource: "unknown",
         });

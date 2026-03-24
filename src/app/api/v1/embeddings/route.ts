@@ -24,6 +24,7 @@ import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 import { getAllCustomModels, getProviderNodes } from "@/lib/localDb";
 import { recordBudgetUsage } from "@/lib/db/apiKeyBudgetLedger";
+import { recordUsageWithAnalytics } from "@/lib/budgetRecorder";
 
 /**
  * Handle CORS preflight
@@ -85,6 +86,8 @@ export async function GET() {
  * POST /v1/embeddings — create embeddings
  */
 export async function POST(request) {
+  const startTime = Date.now();
+
   let rawBody;
   try {
     rawBody = await request.json();
@@ -223,21 +226,32 @@ export async function POST(request) {
   if (result.success) {
     if (credentials) await clearRecoveredProviderState(credentials);
 
-    // Record budget usage
+    // Record budget usage AND analytics usage
     if (policy.apiKeyInfo?.id) {
+      const latencyMs = Date.now() - startTime;
+      const usage = result.data?.usage || {};
+      const promptTokens = usage.prompt_tokens || usage.total_tokens || 0;
+
       try {
-        recordBudgetUsage({
+        await recordUsageWithAnalytics({
           apiKeyId: policy.apiKeyInfo.id,
+          apiKeyName: policy.apiKeyInfo.name,
           endpointType: "embeddings",
           provider,
           model: resolvedModel,
           success: true,
           requestCount: 1,
-          costUsd: null, // Embeddings cost calculation needs pricing data
+          latencyMs,
+          tokens: {
+            input: promptTokens,
+            output: 0, // Embeddings have no output tokens
+          },
+          status: "200",
+          costUsd: null,
           costSource: "unknown",
         });
       } catch (e) {
-        log.warn("EMBED", `Budget recording failed: ${e}`);
+        log.warn("EMBED", `Usage recording failed: ${e}`);
       }
     }
 
